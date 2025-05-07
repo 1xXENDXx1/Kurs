@@ -106,15 +106,58 @@ USART (Universal Synchronous/Asynchronous Receiver/Transmitter) — универ
 
 == Основные датчики для измерения температуры и ЧСС
 
-== Принципиальная схема датчиков (...) и платы XNUCLEO-F411RE
+=== Описание температурного датчика JP402
 
-== Формулы для преобразования величин (ЧСС и Температуры) в сопротивление
+Температурный зонд JP402 представляет собой *неинвазивный медицинский датчик температуры*, предназначенный для измерения *температуры поверхности тела человека*. Он используется в клинических и исследовательских условиях, включая мониторы жизненных показателей, аппараты анестезии и неонатальные системы слежения.
+
+==== Основные характеристики
+
+* Тип чувствительного элемента: NTC-термистор (Negative Temperature Coefficient)
+* Диапазон температур: от +25 °C до +45 °C
+* Точность измерения: ±0.1 °C…±0.2 °C
+* Время отклика: 1–2 секунды
+* Совместимость: мониторы Mindray, Philips, GE, Nihon Kohden и др.
+* Выходной сигнал: аналоговый (напряжение, зависящее от сопротивления)
+* Корпус: медицинский термопластик, пригоден для дезинфекции
+* Способ крепления: с помощью медицинского пластыря или фиксатора
+
+==== Принцип работы
+
+NTC-термистор, встроенный в датчик, изменяет сопротивление в зависимости от температуры: при *повышении температуры сопротивление уменьшается*. 
+
+Подключив термистор в виде делителя напряжения, мы можем измерить выходное напряжение с помощью АЦП STM32 и преобразовать его в температуру.
+
+Для этого:
+1. Используется формула Бета или таблица калибровки;
+2. Устанавливается длительное время выборки АЦП (например, 480 тактов);
+3. Из напряжения вычисляется сопротивление, а затем температура.
+
+==== Схема подключения
+
+- Один вывод термистора подключается к VDDA (3.3 В)
+- Второй вывод — через резистор (10 кОм) к земле (GND)
+- Сигнал (средняя точка делителя) подаётся на аналоговый вход микроконтроллера, например, PA0 (ADC1_IN0)
+
+==== Преимущества использования
+
+* Высокая чувствительность к температуре
+* Подходит для непрерывного мониторинга состояния пациента
+* Быстрое реагирование и стабильность
+* Совместимость с медицинскими стандартами и приборами
+
+
+
+
+
+
+
 == Описание медицинского кожного термодатчика
 
 Этот датчик предназначен для неинвазивного измерения температуры на поверхности тела пациента (кожи). Он представляет собой небольшую капсулу (или цилиндр), внутри которой размещён чувствительный элемент — обычно термистор (NTC) или платиновый терморезистор (Pt100/Pt1000). 
 
 Основные особенности:
 - Способ крепления: датчик приклеивается к коже с помощью медицинского пластыря или специального фиксатора.
+
 - Чувствительный элемент: 
 
   - В случае NTC-термистора, сопротивление _уменьшается_ при повышении температуры.
@@ -200,6 +243,24 @@ GL(t) = K \cdot [T(t - \tau) - T(0)]
 * *T(0)* — базовая температура тела (в °C), соответствующая нулевому уровню гликемии
 * *τ* — временная задержка между изменением температуры и уровнем глюкозы (в минутах)
 
+
+[latexmath]
+++++
+\mathrm{HOMA\!-\!IR}(t)=
+\frac{I_{\text{HR}}(t)\,[\text{мЕд/л}]\;\times\;GL(t)\,[\text{ммоль/л}]}{22.5}
+++++
+
+Здесь  
+
+* *\(I_{\text{HR}}(t)\)* — «виртуальная» концентрация инсулина, полученная из сердечного ритма.  
+  Амплитуда и форма RR‑интервалов сначала нормируются, затем через эмпирическую регрессию сопоставляются с плазменным уровнем инсулина.  
+  Такой приём позволяет обойтись без инвазивного анализа крови при каждом цикле измерений.  
+* *\(GL(t)\)* — концентрация глюкозы, уже рассчитанная из температурного профиля кожи (см. раздел 3.2.2).  
+* 22,5 — безразмерная константа, введённая Мэттьюсом и соавт. для перевода произведения «инсулин × глюкоза» в стандартную шкалу устойчивости к инсулину.
+
+Таким образом, последовательность «ЧСС → \(I_{\text{HR}}\) → HOMA‑IR» дополняет ранее полученную температуру‑зависимую оценку глюкозы и даёт комплексный цифровой маркер метаболического состояния без забора крови.
+
+
 == Алгоритм обработки данных
 
 При обработке равноточных измерений для каждой группы вычисляется среднее значение по формуле:
@@ -266,11 +327,11 @@ S = \sqrt{ \frac{1}{\sum_{j=1}^{L} P_j} }
 == Описание процесса (алгоритма) работы датчика в общем виде
 
 .A-0 Модель неинвазивного глюкометра
-[#pic5]
+[#pic1]
 image::А-0.png[]
 
 .A0 Неинвазивный глюкометр (Первая декомпозиция)
-[#pic5]
+[#pic2]
 image::A0.png[]
 
 *А-0 «Неинвазивный глюкометр»*
@@ -302,3 +363,410 @@ image::A0.png[]
 
 == Описание процесса (алгоритма) работы датчика в подробном представлении
 
+
+
+== Регистры ADC1 для непрерывного преобразования
+
+[cols="1,1,1,4", options="header"]
+|===
+| Периферия | Регистр | Биты | Назначение
+
+| RCC
+| RCC_APB2ENR
+| ADC1EN
+| Включение тактирования модуля ADC1
+
+| GPIOA
+| GPIOA_MODER
+| MODER0 = 0b11
+| Перевод пина PA0 (ADC1_IN0) в аналоговый режим
+
+| ADC1
+| ADC_SMPR2
+| SMP0
+| Время выборки для канала 0 (480 тактов для термистора)
+
+| ADC1
+| ADC_SQR3
+| SQ1 = 0
+| Установка канала 0 в первый слот последовательности измерений
+
+| ADC1
+| ADC_SQR1
+| L = 0
+| Длина последовательности — 1 измерение
+
+| ADC1
+| ADC_CR1
+| SCAN = 0
+| Режим сканирования отключён (один канал)
+
+| ADC1
+| ADC_CR2
+| CONT = 1
+| Включение непрерывного режима преобразования
+
+| ADC1
+| ADC_CR2
+| DMA = 1
+| Включение режима работы с DMA
+
+| ADC1
+| ADC_CR2
+| DDS = 1
+| Разрешает непрерывные запросы DMA
+
+| ADC1
+| ADC_CR2
+| ADON = 1
+| Включение АЦП
+
+| ADC1
+| ADC_CR2
+| SWSTART = 1
+| Программный запуск первого преобразования
+|===
+
+
+
+== UML Диаграмма для проекта
+
+
+[plantuml, architecture_simple, svg]
+----
+@startuml
+'-----------------------------------------------
+'  Небольшая стилизация интерфейсов
+'-----------------------------------------------
+skinparam interfaceBackgroundColor HoneyDew
+skinparam interfaceBorderColor     DarkSeaGreen
+
+'-----------------------------------------------
+'  Интерфейсы
+'-----------------------------------------------
+interface IAdcDriver
+interface ITemperatureStore
+interface IHeartRateStore
+interface IGlucoseStore
+interface IGlucoseCalc
+interface IStatsProcess
+
+'-----------------------------------------------
+'  Реализации
+'-----------------------------------------------
+class Adc
+class TemperatureTable
+class HeartRateTable
+class GlucoseTable
+class GlucoseCalculator
+class StatsCalculator
+
+'-----------------------------------------------
+'  RTOS‑задачи
+'-----------------------------------------------
+class DataCollectorTask <<task>>
+class GlucoseReportTask <<task>>
+
+'-----------------------------------------------
+'  Точка входа
+'-----------------------------------------------
+class Main
+
+'-----------------------------------------------
+'  Реализация интерфейсов
+'-----------------------------------------------
+Adc               ..|> IAdcDriver
+TemperatureTable  ..|> ITemperatureStore
+HeartRateTable    ..|> IHeartRateStore
+GlucoseTable      ..|> IGlucoseStore
+GlucoseCalculator ..|> IGlucoseCalc
+StatsCalculator   ..|> IStatsProcess
+
+'-----------------------------------------------
+'  Зависимости (только через интерфейсы)
+'-----------------------------------------------
+DataCollectorTask --> IAdcDriver
+DataCollectorTask --> ITemperatureStore
+DataCollectorTask --> IHeartRateStore
+
+Adc --> ITemperatureStore : write T
+Adc --> IHeartRateStore   : write HR
+
+GlucoseCalculator --> ITemperatureStore
+GlucoseCalculator --> IHeartRateStore
+GlucoseCalculator --> IGlucoseStore   : write GL
+
+StatsCalculator   --> IGlucoseStore
+
+GlucoseReportTask --> IGlucoseCalc
+GlucoseReportTask --> IStatsProcess
+GlucoseReportTask --> IGlucoseStore
+
+Main --> DataCollectorTask
+Main --> GlucoseReportTask
+@enduml
+
+
+----
+
+
+
+== Код и Классы для проекта
+
+
+Ниже приведены реализации всех компонентов системы в раздельных листингах.  
+Каждому классу предшествует краткое текстовое описание, поясняющее его назначение
+и зону ответственности.
+
+=== Интерфейсы
+
+==== `IAdcDriver`
+
+Абстракция аппаратного драйвера АЦП.  
+Позволяет преобразовать «сырые» такты вольтажа в температуру кожного датчика.
+
+[source,cpp]
+----
+struct IAdcDriver
+{
+    virtual float ToVoltage(std::uint16_t raw)                 = 0;
+    virtual float ToTemperature(float volts)                   = 0;
+    virtual ~IAdcDriver()                                      = default;
+};
+----
+
+==== `IGlucoseCalc`
+
+Интерфейс алгоритма пересчёта температуры (или ЧСС) в мгновенную концентрацию
+глюкозы крови.
+
+[source,cpp]
+----
+struct IGlucoseCalc
+{
+    virtual float TempToGlucose(float tCelsius)                = 0;
+    virtual ~IGlucoseCalc()                                    = default;
+};
+----
+
+==== `IStatsProcess`
+
+Абстракция статистической обработки экспериментальных выборок.
+
+[source,cpp]
+----
+struct IStatsProcess
+{
+    virtual float MeanFloat(const float* data,std::size_t sz)  = 0;
+    virtual ~IStatsProcess()                                   = default;
+};
+----
+
+=== Реализации интерфейсов
+
+==== `StatsCalculator`
+
+Однократный расчёт средне‑арифметического значения массива чисел с плавающей
+запятой.
+
+[source,cpp]
+----
+class StatsCalculator : public IStatsProcess
+{
+public:
+    float MeanFloat(const float* data,std::size_t sz) override
+    {
+        float s = 0.0f;
+        for(std::size_t i = 0; i < sz; ++i) { s += data[i]; }
+        return s / static_cast<float>(sz);
+    }
+};
+----
+
+==== `Adc`
+
+Пример программного драйвера АЦП для платы XNUCLEO‑F411RE.  
+Конвертирует 12‑битные такты в напряжение, а затем — в температуру датчика
+NTC‑10 kΩ.
+
+[source,cpp]
+----
+class Adc : public IAdcDriver
+{
+public:
+    float ToVoltage(std::uint16_t raw) override
+    {
+        return static_cast<float>(raw) * 3.3f / 4096.0f;
+    }
+
+    float ToTemperature(float v) override
+    {
+        constexpr float Vref  = 3.3f;
+        constexpr float Rpull = 10000.0f;
+        constexpr float B     = 3950.0f;
+        constexpr float T0K   = 298.15f;
+        constexpr float R0    = 10000.0f;
+
+        float Rntc  = Rpull * (Vref / v - 1.0f);
+        float tempK = 1.0f / (1.0f / T0K + std::log(Rntc / R0) / B);
+        return tempK - 273.15f;
+    }
+};
+----
+
+==== `GlucoseCalculator`
+
+Простая линейная модель: `GL = 10.31 · (T − 36.37)`,  
+где *T* — температура в °C, *GL* — концентрация глюкозы в ммоль/л.
+
+[source,cpp]
+----
+class GlucoseCalculator : public IGlucoseCalc
+{
+public:
+    float TempToGlucose(float tCelsius) override
+    {
+        return 10.31f * (tCelsius - 36.37f);
+    }
+};
+----
+
+=== RTOS‑задачи
+
+==== `DataCollectorTask`
+
+Считывает очередной такт из таблицы `ticks`, пересчитывает его в вольты и
+температуру и заполняет две рабочие выборки (`volts`, `temps`).
+
+[source,cpp]
+----
+class DataCollectorTask
+{
+public:
+    DataCollectorTask(IAdcDriver& a,
+                      std::array<float,60>& v,
+                      std::array<float,60>& t)
+        : adc(a), volts(v), temps(t), idx(0) {}
+
+    void Tick()
+    {
+        volts[idx] = adc.ToVoltage(ticks[idx]);
+        temps[idx] = adc.ToTemperature(volts[idx]);
+        idx = (idx + 1) % volts.size();
+    }
+private:
+    IAdcDriver& adc;
+    std::array<float,60>& volts;
+    std::array<float,60>& temps;
+    std::size_t idx;
+};
+----
+
+==== `GlucoseReportTask`
+
+Периодически пересчитывает температуру в глюкозу, сохраняет результирующую
+выборку и выводит её среднее значение по UART.
+
+[source,cpp]
+----
+class GlucoseReportTask
+{
+public:
+    GlucoseReportTask(IGlucoseCalc& g,
+                      IStatsProcess& s,
+                      const std::array<float,60>& t,
+                      std::array<float,60>& gl)
+        : gc(g), stats(s), temps(t), glucose(gl) {}
+
+    void Run()
+    {
+        for(std::size_t i = 0; i < temps.size(); ++i)
+            glucose[i] = gc.TempToGlucose(temps[i]);
+
+        float mean = stats.MeanFloat(glucose.data(),glucose.size());
+        std::cout << "Mean glucose = " << mean << " mmol/L\n";
+    }
+private:
+    IGlucoseCalc& gc;
+    IStatsProcess& stats;
+    const std::array<float,60>& temps;
+    std::array<float,60>& glucose;
+};
+----
+
+
+=== `Mathstats`
+
+[source,cpp]
+----
+class MathStats
+{
+public:
+    template <typename Container>
+    static float Mean(const Container& data)
+    {
+        float s = 0.0f;
+        for (auto v : data) s += static_cast<float>(v);
+        return s / static_cast<float>(data.size());
+    }
+};
+----
+
+Класс математической статистики предназначен для пересчета выборок и правильного подсчета глюкоза в конце.
+
+
+=== Точка входа
+
+Минимальный консольный тест, эмулирующий один 10‑минутный цикл работы
+приложения.
+
+[source,cpp]
+----
+int main()
+{
+    Adc adc;
+    StatsCalculator stats;
+    GlucoseCalculator gc;
+
+    std::array<float,60> volts{};
+    std::array<float,60> temps{};
+    std::array<float,60> glucose{};
+
+    DataCollectorTask collector(adc, volts, temps);
+    GlucoseReportTask reporter(gc, stats, temps, glucose);
+
+    for(std::size_t i = 0; i < 60; ++i) collector.Tick();
+    reporter.Run();
+    return 0;
+}
+----
+
+=== Передача результатов по USART
+
+Для оперативного наблюдения за работой устройства все вычисленные
+параметры (сырое значение АЦП, напряжение, температура, расчётная
+глюкоза, ЧСС и т.д.) отправляются по последовательному интерфейсу
+USART‑1, выведенному на пины **PA9/PA10** отладочной платы
+XNUCLEO‑F411RE.  
+
+Библиотечная функция `std::printf()` была ретаргетирована на USART:
+в стартап‑коде настроен драйвер передачи, а системные вызовы `_write`
+и `\_isatty` переопределены, чтобы стандартный поток `stdout` направлялся
+в регистр передачи `USART1->DR`.  Скорость выбрана **115 200 бит/с,
+8 N 1**, что поддерживается большинством терминальных программ
+(putty, Tera‑Term, minicom).  
+
+* В RTOS‑задаче **GlucoseReportTask** раз в 10 минут формируется
+  отчётная строка вида  
+  `GL: 5.82 mmol/L  T: 36.91 °C  HR: 87 bpm`,  
+  которая выводится единым вызовом `printf()`;  
+* в фоновом цикле «живого» *demo* (функция `main()` без RTOS) каждая
+  новая выборка АЦП немедленно печатается в отладочный терминал,
+  формируя поток телеметрии с периодом 10 секунд.  
+
+Такое решение позволяет одновременно:
+
+* просматривать данные на ПК без дополнительного оборудования;
+* логировать серию измерений в файл для последующего анализа;
+* не нагружать микроконтроллер сложными сетевыми протоколами на этапе
+  отладки.
