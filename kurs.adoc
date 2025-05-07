@@ -436,7 +436,7 @@ image::A0.png[]
 ----
 @startuml
 '-----------------------------------------------
-'  Небольшая стилизация интерфейсов
+'  Стили для интерфейсов
 '-----------------------------------------------
 skinparam interfaceBackgroundColor HoneyDew
 skinparam interfaceBorderColor     DarkSeaGreen
@@ -483,28 +483,25 @@ GlucoseCalculator ..|> IGlucoseCalc
 StatsCalculator   ..|> IStatsProcess
 
 '-----------------------------------------------
-'  Зависимости (только через интерфейсы)
+'  Зависимости (через интерфейсы)
 '-----------------------------------------------
 DataCollectorTask --> IAdcDriver
 DataCollectorTask --> ITemperatureStore
 DataCollectorTask --> IHeartRateStore
 
-Adc --> ITemperatureStore : write T
-Adc --> IHeartRateStore   : write HR
-
 GlucoseCalculator --> ITemperatureStore
 GlucoseCalculator --> IHeartRateStore
-GlucoseCalculator --> IGlucoseStore   : write GL
+GlucoseCalculator --> IGlucoseStore
 
 StatsCalculator   --> IGlucoseStore
 
 GlucoseReportTask --> IGlucoseCalc
 GlucoseReportTask --> IStatsProcess
-GlucoseReportTask --> IGlucoseStore
 
 Main --> DataCollectorTask
 Main --> GlucoseReportTask
 @enduml
+
 
 
 ----
