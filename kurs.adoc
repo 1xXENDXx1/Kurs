@@ -132,18 +132,63 @@ NTC-термистор, встроенный в датчик, изменяет �
 2. Устанавливается длительное время выборки АЦП (например, 480 тактов);
 3. Из напряжения вычисляется сопротивление, а затем температура.
 
-==== Схема подключения
+===== Схема подключения
 
 - Один вывод термистора подключается к VDDA (3.3 В)
 - Второй вывод — через резистор (10 кОм) к земле (GND)
 - Сигнал (средняя точка делителя) подаётся на аналоговый вход микроконтроллера, например, PA0 (ADC1_IN0)
 
-==== Преимущества использования
+===== Преимущества использования
 
 * Высокая чувствительность к температуре
 * Подходит для непрерывного мониторинга состояния пациента
 * Быстрое реагирование и стабильность
 * Совместимость с медицинскими стандартами и приборами
+
+:toc:
+:toclevels: 2
+:sectnums:
+
+=== Принцип работы пульсометра
+
+==== Физическая основа измерения
+Измеряется частота периодических колебаний, вызываемых сокращениями сердца.  
+Пульс может сниматься оптическим датчиком (фотоплетизмография), пьезодатчиком давления или при помощи электродов. Во всех случаях на выходе формируется **электрический импульс** каждый раз, когда происходит сердечный выброс.
+
+==== Формирование электрического сигнала
+* **Датчик** располагается на коже (палец, запястье, ушная мочка).  
+* При каждом сердечном ударе изменяется либо поток света (оптика), либо давление (механика), либо потенциал кожи (ЭКГ).  
+* Эти изменения преобразуются в узкие электрические импульсы одинаковой полярности и уровня.
+
+==== Преобразование в цифровую форму
+Импульсы поступают на вход таймера-счётчика микроконтроллера:
+* На таймере активируется режим **захвата** (input-capture).  
+* Каждый фронт импульса фиксирует текущее значение счётного регистра.  
+* Из разницы двух соседних захватов получают длительность интервала R-R (между ударами) в тактах системной частоты.
+
+==== Расчёт частоты сердечных сокращений
+Частота (BPM) вычисляется по формуле:
+
+[latexmath]
+++++
+\text{BPM} = \frac{60\,000\ \text{мс}}{\Delta t_{\text{удар}}}
+++++
+
+где `Δt` — время между двумя подряд фронтами.  
+Для микроконтроллера время обычно сначала переводится из тактов в микросекунды, затем — в удары в минуту.
+
+=== Фильтрация и подавление помех
+* **Прерывание таймера** отбрасывает ложные срабатывания короче заданного окна (debounce).  
+* Скользящее среднее или медианный фильтр из 3-5 последних интервалов сглаживает естественный джиттер.  
+* При длительном отсутствии импульсов счётчик сбрасывается, чтобы не выдавать ноль или бесконечность.
+
+=== Вывод и использование данных
+Готовое значение ЧСС:
+* передаётся в алгоритмы (например, для коррекции расчёта глюкозы);  
+* отображается на дисплее или отправляется в отладочный порт.
+
+Такой поток «датчик → захват таймера → расчёт Δt → BPM → фильтр» обеспечивает надёжное и энергоэффективное измерение пульса без привязки к конкретной реализации программных классов.
+
 
 
 
@@ -361,10 +406,6 @@ image::A0.png[]
 Этот процесс служит центральным «дирижёром» системы: он собирает индивидуальные данные пользователя и требования медицинских протоколов, а также нормативные стандарты, а на их основе формирует ключевые коэффициенты, смещения и пороговые величины для всех вычислительных модулей. Благодаря ему фильтрация, масштабирование сигналов и статистическая обработка выполняются с учётом специфики конкретного человека и требований регуляторов.
 
 
-== Описание процесса (алгоритма) работы датчика в подробном представлении
-
-
-
 == Регистры ADC1 для непрерывного преобразования
 
 [cols="1,1,1,4", options="header"]
@@ -432,78 +473,67 @@ image::A0.png[]
 == UML Диаграмма для проекта
 
 
-[plantuml, architecture_simple, svg]
+[plantuml, png]
 ----
 @startuml
-'-----------------------------------------------
-'  Стили для интерфейсов
-'-----------------------------------------------
+
+allowmixing 
+' ── визуальное оформление ─────────────────────────
 skinparam interfaceBackgroundColor HoneyDew
 skinparam interfaceBorderColor     DarkSeaGreen
+left to right direction
 
-'-----------------------------------------------
-'  Интерфейсы
-'-----------------------------------------------
+' ── interfaces ────────────────────────────────────
+interface IThread
 interface IAdcDriver
-interface ITemperatureStore
-interface IHeartRateStore
-interface IGlucoseStore
-interface IGlucoseCalc
+interface IHrGenerator
+interface IHrSensor
+interface IGlucoseCalculator
 interface IStatsProcess
+interface ISerial
 
-'-----------------------------------------------
-'  Реализации
-'-----------------------------------------------
+' ── utilities ─────────────────────────────────────
+class Serial        
+
+' ── hardware drivers ─────────────────────────────
 class Adc
-class TemperatureTable
-class HeartRateTable
-class GlucoseTable
+class HrGenerator
+class HrSensor
+
+' ── computing modules ────────────────────────────
 class GlucoseCalculator
-class StatsCalculator
+class DataProcessing
 
-'-----------------------------------------------
-'  RTOS‑задачи
-'-----------------------------------------------
-class DataCollectorTask <<task>>
-class GlucoseReportTask <<task>>
+' ── data structures ──────────────────────────────
+database SamplePacket
 
-'-----------------------------------------------
-'  Точка входа
-'-----------------------------------------------
-class Main
+' ── RTOS tasks ────────────────────────────────────
+class DataCollectionTask <<task>>
+class GlucoseCalcTask    <<task>>
 
-'-----------------------------------------------
-'  Реализация интерфейсов
-'-----------------------------------------------
+' ── interface implementation ─────────────────────
 Adc               ..|> IAdcDriver
-TemperatureTable  ..|> ITemperatureStore
-HeartRateTable    ..|> IHeartRateStore
-GlucoseTable      ..|> IGlucoseStore
-GlucoseCalculator ..|> IGlucoseCalc
-StatsCalculator   ..|> IStatsProcess
+HrGenerator       ..|> IHrGenerator
+HrSensor          ..|> IHrSensor
+GlucoseCalculator ..|> IGlucoseCalculator
+DataProcessing    ..|> IStatsProcess
+Serial            ..|> ISerial
 
-'-----------------------------------------------
-'  Зависимости (через интерфейсы)
-'-----------------------------------------------
-DataCollectorTask --> IAdcDriver
-DataCollectorTask --> ITemperatureStore
-DataCollectorTask --> IHeartRateStore
+DataCollectionTask ..|> IThread : period 10 sec
+GlucoseCalcTask    ..|> IThread : period 10 min
 
-GlucoseCalculator --> ITemperatureStore
-GlucoseCalculator --> IHeartRateStore
-GlucoseCalculator --> IGlucoseStore
+' ── dependencies (through interfaces) ────────────
+DataCollectionTask --o IAdcDriver
+DataCollectionTask --o IHrGenerator
+DataCollectionTask --o IHrSensor
 
-StatsCalculator   --> IGlucoseStore
+GlucoseCalcTask    --o IGlucoseCalculator
+GlucoseCalcTask    --o IStatsProcess
 
-GlucoseReportTask --> IGlucoseCalc
-GlucoseReportTask --> IStatsProcess
+DataCollectionTask --o SamplePacket : fill
+GlucoseCalcTask   --o SamplePacket : read
 
-Main --> DataCollectorTask
-Main --> GlucoseReportTask
 @enduml
-
-
-
 ----
 
 
@@ -515,255 +545,84 @@ Main --> GlucoseReportTask
 Каждому классу предшествует краткое текстовое описание, поясняющее его назначение
 и зону ответственности.
 
-=== Интерфейсы
+== Интерфейсы
 
-==== `IAdcDriver`
+=== IThread
+Контракт для объектов‐потоков RTOS.  Содержит минимальный набор методов (например, `Execute()`), который вызывается планировщиком.  Позволяет запускать разные задачи единообразно и подменять их в юнит-тестах.
 
-Абстракция аппаратного драйвера АЦП.  
-Позволяет преобразовать «сырые» такты вольтажа в температуру кожного датчика.
+=== IAdcDriver
+Абстракция над модулем АЦП.  Гарантирует, что реализация умеет инициализироваться и выдавать «сырое» 12-битное измерение по каналу.
 
+=== IHrGenerator
+Интерфейс драйвера генератора тестового сердечного ритма.  Позволяет устанавливать частоту прямоугольного сигнала, не раскрывая деталей таймера.
+
+=== IHrSensor
+Предоставляет метод для получения измеренной частоты (BPM) и функцию обработки прерывания.  Клиентскому коду не нужно знать, на каком входе и по какому фронту работает захват.
+
+=== IGlucoseCalculator
+Контракт высокоуровневого вычислителя, превращающего данные АЦП + ЧСС в мгновенное значение глюкозы.
+
+=== IStatsProcess
+Интерфейс для статистической агрегации значений (минимум, максимум, усреднение, σ).  Используется отчётными задачами.
+
+=== ISerial
+Единая абстракция для вывода отладочной информации.  Сохраняет возможность заменить `USART1` на другой транспорт (USB CDC, SWO, лог-буфер) без правки клиентского кода.
+
+== Утилиты
+
+=== Serial
+Минимальный драйвер USART1 (TX = PA9).  Позволяет использовать `printf`/`iostream`, реализуя функцию `_write()`.  
+Не имеет состояния — всё API статическое; реализует `ISerial`.
+
+== Драйверы аппаратуры
+
+=== Adc
+Низкоуровневое обёртывание над `ADC1`.  Настраивает режим «single-shot», время выборки, канал PA0 (IN2) и возвращает 12-битное значение.  Реализует `IAdcDriver`.
+
+=== HrGenerator
+Конфигурирует `TIM2_CH3` (PA2) в режим PWM/toggle, создаёт тестовую квадратуру нужной частоты для стендовых испытаний.  Реализует `IHrGenerator`.
+
+=== HrSensor
+Использует захват `TIM2_CH2` (PA1) для измерения фактической частоты входного сигнала.  В ISR вычисляет период → BPM.  Реализует `IHrSensor`.
+
+== Вычислительные модули
+
+=== GlucoseCalculator
+Преобразует:
+* «сырые» показания термистора (АЦП);
+* частоту сердечных сокращений;
+
+а затем усредняет с помощью `DataProcessing`.  Реализует `IGlucoseCalculator`.
+
+=== DataProcessing
+Набор статистических/фильтрующих функций (усреднение трёх точек, сглаживание, объединение выборок).  Реализует `IStatsProcess`, чтобы задачи могли агрегировать результаты.
+
+== Структуры данных
+
+=== SamplePacket
 [source,cpp]
 ----
-struct IAdcDriver
-{
-    virtual float ToVoltage(std::uint16_t raw)                 = 0;
-    virtual float ToTemperature(float volts)                   = 0;
-    virtual ~IAdcDriver()                                      = default;
+struct SamplePacket {
+    std::array<uint16_t,3> ticks;  // «сырые» АЦП значения
+    std::array<uint16_t,3> bpm;    // измеренные ЧСС
 };
 ----
+Пакет из трёх последовательных измерений.  Передаётся между потоками через `MailBox`.
 
-==== `IGlucoseCalc`
+== RTOS-задачи
 
-Интерфейс алгоритма пересчёта температуры (или ЧСС) в мгновенную концентрацию
-глюкозы крови.
+=== DataCollectionTask
+Периодичность — 10 с.  
+Алгоритм:
+. Устанавливает частоту тестового генератора.
+. Дважды опрашивает АЦП и датчик ЧСС, заполняя `SamplePacket`.
+. Отправляет пакет в почтовый ящик.  
+Имплементирует `IThread` и зависит от `IAdcDriver`, `IHrGenerator`, `IHrSensor`.
 
-[source,cpp]
-----
-struct IGlucoseCalc
-{
-    virtual float TempToGlucose(float tCelsius)                = 0;
-    virtual ~IGlucoseCalc()                                    = default;
-};
-----
-
-==== `IStatsProcess`
-
-Абстракция статистической обработки экспериментальных выборок.
-
-[source,cpp]
-----
-struct IStatsProcess
-{
-    virtual float MeanFloat(const float* data,std::size_t sz)  = 0;
-    virtual ~IStatsProcess()                                   = default;
-};
-----
-
-=== Реализации интерфейсов
-
-==== `StatsCalculator`
-
-Однократный расчёт средне‑арифметического значения массива чисел с плавающей
-запятой.
-
-[source,cpp]
-----
-class StatsCalculator : public IStatsProcess
-{
-public:
-    float MeanFloat(const float* data,std::size_t sz) override
-    {
-        float s = 0.0f;
-        for(std::size_t i = 0; i < sz; ++i) { s += data[i]; }
-        return s / static_cast<float>(sz);
-    }
-};
-----
-
-==== `Adc`
-
-Пример программного драйвера АЦП для платы XNUCLEO‑F411RE.  
-Конвертирует 12‑битные такты в напряжение, а затем — в температуру датчика
-NTC‑10 kΩ.
-
-[source,cpp]
-----
-class Adc : public IAdcDriver
-{
-public:
-    float ToVoltage(std::uint16_t raw) override
-    {
-        return static_cast<float>(raw) * 3.3f / 4096.0f;
-    }
-
-    float ToTemperature(float v) override
-    {
-        constexpr float Vref  = 3.3f;
-        constexpr float Rpull = 10000.0f;
-        constexpr float B     = 3950.0f;
-        constexpr float T0K   = 298.15f;
-        constexpr float R0    = 10000.0f;
-
-        float Rntc  = Rpull * (Vref / v - 1.0f);
-        float tempK = 1.0f / (1.0f / T0K + std::log(Rntc / R0) / B);
-        return tempK - 273.15f;
-    }
-};
-----
-
-==== `GlucoseCalculator`
-
-Простая линейная модель: `GL = 10.31 · (T − 36.37)`,  
-где *T* — температура в °C, *GL* — концентрация глюкозы в ммоль/л.
-
-[source,cpp]
-----
-class GlucoseCalculator : public IGlucoseCalc
-{
-public:
-    float TempToGlucose(float tCelsius) override
-    {
-        return 10.31f * (tCelsius - 36.37f);
-    }
-};
-----
-
-=== RTOS‑задачи
-
-==== `DataCollectorTask`
-
-Считывает очередной такт из таблицы `ticks`, пересчитывает его в вольты и
-температуру и заполняет две рабочие выборки (`volts`, `temps`).
-
-[source,cpp]
-----
-class DataCollectorTask
-{
-public:
-    DataCollectorTask(IAdcDriver& a,
-                      std::array<float,60>& v,
-                      std::array<float,60>& t)
-        : adc(a), volts(v), temps(t), idx(0) {}
-
-    void Tick()
-    {
-        volts[idx] = adc.ToVoltage(ticks[idx]);
-        temps[idx] = adc.ToTemperature(volts[idx]);
-        idx = (idx + 1) % volts.size();
-    }
-private:
-    IAdcDriver& adc;
-    std::array<float,60>& volts;
-    std::array<float,60>& temps;
-    std::size_t idx;
-};
-----
-
-==== `GlucoseReportTask`
-
-Периодически пересчитывает температуру в глюкозу, сохраняет результирующую
-выборку и выводит её среднее значение по UART.
-
-[source,cpp]
-----
-class GlucoseReportTask
-{
-public:
-    GlucoseReportTask(IGlucoseCalc& g,
-                      IStatsProcess& s,
-                      const std::array<float,60>& t,
-                      std::array<float,60>& gl)
-        : gc(g), stats(s), temps(t), glucose(gl) {}
-
-    void Run()
-    {
-        for(std::size_t i = 0; i < temps.size(); ++i)
-            glucose[i] = gc.TempToGlucose(temps[i]);
-
-        float mean = stats.MeanFloat(glucose.data(),glucose.size());
-        std::cout << "Mean glucose = " << mean << " mmol/L\n";
-    }
-private:
-    IGlucoseCalc& gc;
-    IStatsProcess& stats;
-    const std::array<float,60>& temps;
-    std::array<float,60>& glucose;
-};
-----
-
-
-=== `Mathstats`
-
-[source,cpp]
-----
-class MathStats
-{
-public:
-    template <typename Container>
-    static float Mean(const Container& data)
-    {
-        float s = 0.0f;
-        for (auto v : data) s += static_cast<float>(v);
-        return s / static_cast<float>(data.size());
-    }
-};
-----
-
-Класс математической статистики предназначен для пересчета выборок и правильного подсчета глюкоза в конце.
-
-
-=== Точка входа
-
-Минимальный консольный тест, эмулирующий один 10‑минутный цикл работы
-приложения.
-
-[source,cpp]
-----
-int main()
-{
-    Adc adc;
-    StatsCalculator stats;
-    GlucoseCalculator gc;
-
-    std::array<float,60> volts{};
-    std::array<float,60> temps{};
-    std::array<float,60> glucose{};
-
-    DataCollectorTask collector(adc, volts, temps);
-    GlucoseReportTask reporter(gc, stats, temps, glucose);
-
-    for(std::size_t i = 0; i < 60; ++i) collector.Tick();
-    reporter.Run();
-    return 0;
-}
-----
-
-=== Передача результатов по USART
-
-Для оперативного наблюдения за работой устройства все вычисленные
-параметры (сырое значение АЦП, напряжение, температура, расчётная
-глюкоза, ЧСС и т.д.) отправляются по последовательному интерфейсу
-USART‑1, выведенному на пины **PA9/PA10** отладочной платы
-XNUCLEO‑F411RE.  
-
-Библиотечная функция `std::printf()` была ретаргетирована на USART:
-в стартап‑коде настроен драйвер передачи, а системные вызовы `_write`
-и `\_isatty` переопределены, чтобы стандартный поток `stdout` направлялся
-в регистр передачи `USART1->DR`.  Скорость выбрана **115 200 бит/с,
-8 N 1**, что поддерживается большинством терминальных программ
-(putty, Tera‑Term, minicom).  
-
-* В RTOS‑задаче **GlucoseReportTask** раз в 10 минут формируется
-  отчётная строка вида  
-  `GL: 5.82 mmol/L  T: 36.91 °C  HR: 87 bpm`,  
-  которая выводится единым вызовом `printf()`;  
-* в фоновом цикле «живого» *demo* (функция `main()` без RTOS) каждая
-  новая выборка АЦП немедленно печатается в отладочный терминал,
-  формируя поток телеметрии с периодом 10 секунд.  
-
-Такое решение позволяет одновременно:
-
-* просматривать данные на ПК без дополнительного оборудования;
-* логировать серию измерений в файл для последующего анализа;
-* не нагружать микроконтроллер сложными сетевыми протоколами на этапе
-  отладки.
+=== GlucoseCalcTask
+Периодичность — 10 мин.  
+Алгоритм:
+. Берёт пакет измерений из `MailBox`.
+. Использует `IGlucoseCalculator` → получает три значения глюкозы.
+. Передаёт результаты модулю статистики (`IStatsProcess`) и выводит в `Serial`.  
+Тоже реализует `IThread`.
