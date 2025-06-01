@@ -489,8 +489,9 @@ interface IAdcDriver
 interface IHrGenerator
 interface IHrSensor
 interface IGlucoseCalculator
-interface IStatsProcess
+interface IDataProcessing
 interface ISerial
+interface IFormator
 
 ' ── utilities ─────────────────────────────────────
 class Serial        
@@ -499,28 +500,33 @@ class Serial
 class Adc
 class HrGenerator
 class HrSensor
+class Formator
 
 ' ── computing modules ────────────────────────────
 class GlucoseCalculator
 class DataProcessing
 
 ' ── data structures ──────────────────────────────
-database SamplePacket
+class SamplePacket
 
 ' ── RTOS tasks ────────────────────────────────────
 class DataCollectionTask <<task>>
 class GlucoseCalcTask    <<task>>
+class DisplayValuesTask   <<task>>
 
 ' ── interface implementation ─────────────────────
-Adc               ..|> IAdcDriver
-HrGenerator       ..|> IHrGenerator
-HrSensor          ..|> IHrSensor
-GlucoseCalculator ..|> IGlucoseCalculator
-DataProcessing    ..|> IStatsProcess
-Serial            ..|> ISerial
+DataCollectionTask .up.|> IThread : period 10 sec
+GlucoseCalcTask    .up.|> IThread : period 10 min
+DisplayValuesTask   .up.|> IThread
 
-DataCollectionTask ..|> IThread : period 10 sec
-GlucoseCalcTask    ..|> IThread : period 10 min
+Adc               .up.|> IAdcDriver
+HrGenerator       .up.|> IHrGenerator
+HrSensor          .up.|> IHrSensor
+GlucoseCalculator .up.|> IGlucoseCalculator
+DataProcessing    .up.|> IDataProcessing
+Serial            .up.|> ISerial
+Formator          .up.|> IFormator
+
 
 ' ── dependencies (through interfaces) ────────────
 DataCollectionTask --o IAdcDriver
@@ -528,14 +534,21 @@ DataCollectionTask --o IHrGenerator
 DataCollectionTask --o IHrSensor
 
 GlucoseCalcTask    --o IGlucoseCalculator
-GlucoseCalcTask    --o IStatsProcess
+GlucoseCalcTask    --o IDataProcessing
 
-DataCollectionTask --o SamplePacket : fill
-GlucoseCalcTask   --o SamplePacket : read
+DisplayValuesTask   --o ISerial
+
+DisplayValuesTask  ..> SamplePacket : Recive DisplayMailBox
+DisplayValuesTask  --o IFormator
+
+DataCollectionTask ..> SamplePacket : Send MailBox
+GlucoseCalcTask    ..> SamplePacket : Reсive MailBox
+GlucoseCalcTask    ..> SamplePacket : Send DisplayMailBox
+
+
 
 @enduml
 ----
-
 
 
 == Код и Классы для проекта
@@ -626,3 +639,18 @@ struct SamplePacket {
 . Использует `IGlucoseCalculator` → получает три значения глюкозы.
 . Передаёт результаты модулю статистики (`IStatsProcess`) и выводит в `Serial`.  
 Тоже реализует `IThread`.
+
+
+
+== Пример работы программы
+
+Ниже на риснуках представлен пример работы программы.
+
+.Изменяется частота сердечных скоращений и тики снятые с переменного резистора
+[#pic3]
+image::allWork.png[]
+
+
+.Отключение и включение провода для подчи частоты 
+[#pic4]
+image::bpm0.png[]
