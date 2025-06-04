@@ -1,0 +1,59 @@
+@startuml
+
+allowmixing 
+' ── визуальное оформление ─────────────────────────
+skinparam interfaceBackgroundColor HoneyDew
+skinparam interfaceBorderColor     DarkSeaGreen
+left to right direction
+
+' ── interfaces ────────────────────────────────────
+interface IThread
+interface IAdcDriver
+interface IHrGenerator
+interface IHrSensor
+interface IGlucoseCalculator
+interface IStatsProcess
+interface ISerial
+
+' ── utilities ─────────────────────────────────────
+class Serial        
+
+' ── hardware drivers ─────────────────────────────
+class Adc
+class HrGenerator
+class HrSensor
+
+' ── computing modules ────────────────────────────
+class GlucoseCalculator
+class DataProcessing
+
+' ── data structures ──────────────────────────────
+database SamplePacket
+
+' ── RTOS tasks ────────────────────────────────────
+class DataCollectionTask <<task>>
+class GlucoseCalcTask    <<task>>
+
+' ── interface implementation ─────────────────────
+Adc               ..|> IAdcDriver
+HrGenerator       ..|> IHrGenerator
+HrSensor          ..|> IHrSensor
+GlucoseCalculator ..|> IGlucoseCalculator
+DataProcessing    ..|> IStatsProcess
+Serial            ..|> ISerial
+
+DataCollectionTask ..|> IThread : period 10 sec
+GlucoseCalcTask    ..|> IThread : period 10 min
+
+' ── dependencies (through interfaces) ────────────
+DataCollectionTask --o IAdcDriver
+DataCollectionTask --o IHrGenerator
+DataCollectionTask --o IHrSensor
+
+GlucoseCalcTask    --o IGlucoseCalculator
+GlucoseCalcTask    --o IStatsProcess
+
+DataCollectionTask --o SamplePacket : fill
+GlucoseCalcTask   --o SamplePacket : read
+
+@enduml
